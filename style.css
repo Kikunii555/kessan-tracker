@@ -921,10 +921,12 @@ textarea.form-input {
   box-shadow: var(--shadow-xl);
   width: 100%;
   max-width: 480px;
-  margin-top: 60px;
+  margin-top: 40px;
   padding: var(--spacing-lg);
   transform: translateY(20px);
   transition: transform var(--transition-slow);
+  max-height: 85vh;
+  overflow-y: auto;
 }
 
 .detail-overlay.active .detail-panel {

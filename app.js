@@ -429,13 +429,23 @@ function setupEventListeners() {
     if (e.target === dom.detailOverlay) closeDetail();
   });
   $('#btnDetailEdit').addEventListener('click', () => {
-    closeDetail();
     const rec = allRecords.find(r => r.id === currentDetailId);
+    closeDetail();
     if (rec) openEditModal(rec);
   });
   $('#btnDetailDelete').addEventListener('click', () => {
     showConfirm('この決算データを削除しますか？', async () => {
-      await DB.delete(currentDetailId);
+      try {
+        await DB.delete(currentDetailId);
+        // IDが型違いで保存されている場合のフェールセーフ
+        if (typeof currentDetailId === 'number') {
+          await DB.delete(String(currentDetailId));
+        } else if (typeof currentDetailId === 'string' && !isNaN(Number(currentDetailId))) {
+          await DB.delete(Number(currentDetailId));
+        }
+      } catch (e) {
+        console.error('Delete error:', e);
+      }
       closeDetail();
       await loadRecords();
       showToast('削除しました');
@@ -758,7 +768,8 @@ function renderTable() {
   // Row click to open detail
   dom.tableBody.querySelectorAll('tr').forEach(tr => {
     tr.addEventListener('click', () => {
-      const id = parseInt(tr.dataset.id);
+      const rawId = tr.dataset.id;
+      const id = isNaN(Number(rawId)) ? rawId : Number(rawId);
       const rec = allRecords.find(r => r.id === id);
       if (rec) openDetail(rec);
     });
@@ -1041,26 +1052,33 @@ function showToast(message) {
 // AI Bulk Input Actions
 // ========================================
 function copyPromptTemplate() {
-  const prompt = `株探の決算速報記事から、以下の項目を抽出して出力してください。数値は必ず「億円」単位の数値部分のみ（またはパーセントの数値部分のみ）にしてください。不明な項目は「不明」または空欄にしてください。
+  const prompt = `株探の決算速報記事からデータを抽出し、以下のJSONフォーマットのみで出力してください。余計な説明や前後の解説は一切含めないでください。
 
-【出力フォーマット】
-コード: 4桁の銘柄コード
-決算期: 例「2025年3月期」や「2025.3」
-四半期: 「1Q」「2Q」「3Q」「本決算」のいずれか
-発表日: YYYY-MM-DD 形式
-評価: 記事全体のトーンから「◎（絶好調・サプライズ）」「○（好調・順調）」「△（普通・横ばい）」「×（悪い・下方）」のいずれか
-損益区分: 「経常」または「最終」
-損益: 利益（または赤字）の額（億円）
-前年比: 前年同期比の増減率（%）
-売上高: 売上高の額（億円）
-進捗率: 通期計画に対する進捗率（%）
-予想修正: 「up（上方修正有）」「hold（据え置き）」「down（下方修正有）」「none（未発表）」のいずれか
-配当方針: 「up（増配発表有）」「hold（据え置き）」「down（減配発表有）」「none（無配）」「unknown（非開示）」のいずれか
-年間配当: 年間配当金（円）
-自社株買い: 「yes（発表有）」または「no（無し）」
-メモ: 決算の要約や注目ポイント（30字〜100字程度）
+【抽出ルール】
+- 該当する数値がない項目は null にしてください。
+- 単位（億円、円、％）は含めず、純粋な半角数値のみにしてください。
 
-【記事本文】
+【出力JSONフォーマット】
+{
+  "code": "4桁の銘柄コード（文字列）",
+  "fiscalYear": 決算期の年度4桁（数値、例: 2026）,
+  "fiscalMonth": 決算期の月（数値、例: 3）,
+  "quarter": "「1Q」「2Q」「3Q」「本決算」のいずれか（文字列）",
+  "date": "決算発表日（YYYY-MM-DD形式、例: 2026-05-15）",
+  "rating": "決算トーンから「◎（絶好調/サプライズ）」「○（好調/順調）」「△（普通/横ばい）」「×（悪い/下方）」のいずれか",
+  "profitType": "「経常」または「最終」",
+  "profit": 利益（または赤字）の実績値（億円、数値のみ。赤字はマイナス）,,
+  "yoy": 前年同期比の増減率（%、数値のみ）,,
+  "revenue": 売上高の実績値（億円、数値のみ。会社予想ではなく実績値）,,
+  "progress": 通期計画に対する進捗率（%、数値のみ）,,
+  "revision": "会社予想の修正有無。「up（上方修正有）」「hold（据置）」「down（下方修正有）」「none（未発表）」のいずれか",
+  "dividendStatus": "配当方針の修正有無。「up（増配・増額）」「hold（据置・変更なし）」「down（減配・減額）」「none（無配）」「unknown（非開示）」のいずれか",
+  "dividendValue": 年間配当金（円、数値のみ）,
+  "buyback": "自社株買いの発表有無。「yes（発表あり）」「no（なし）」のいずれか",
+  "memo": "決算内容の短い要約（日本語50文字程度）"
+}
+
+【株探の決算ニュース記事本文】
 [ここに株探の記事本文を貼り付ける]`;
 
   navigator.clipboard.writeText(prompt).then(() => {
@@ -1108,10 +1126,16 @@ function parseTextToRecord(text) {
   const record = {};
   
   const getNum = (v) => {
-    // Strip emojis and other symbols, keep numbers and minus signs
-    const cleaned = v.replace(/[^\d.-]/g, '');
-    const n = parseFloat(cleaned);
-    return isNaN(n) ? null : n;
+    const cleanV = v.replace(/,/g, '');
+    const unitMatch = cleanV.match(/(-?\d+(?:\.\d+)?)\s*(?:億|%|％|円)/);
+    if (unitMatch) {
+      return parseFloat(unitMatch[1]);
+    }
+    const numbers = cleanV.match(/-?\d+(?:\.\d+)?/g);
+    if (numbers && numbers.length > 0) {
+      return parseFloat(numbers[numbers.length - 1]);
+    }
+    return null;
   };
 
   lines.forEach(line => {
@@ -1119,6 +1143,9 @@ function parseTextToRecord(text) {
     if (parts.length < 2) return;
     const key = parts[0].trim();
     const val = parts.slice(1).join(':').trim();
+
+    // 予想・計画・目標などのキーワードが含まれる場合は実績数値としてパースしないように除外
+    const isForecastKey = key.includes('予想') || key.includes('計画') || key.includes('目標') || key.includes('予測') || key.includes('営業利益率') || key.includes('参考');
 
     if (key.includes('コード') || key.includes('銘柄コード')) {
       const match = val.match(/\d{4}/);
@@ -1148,13 +1175,13 @@ function parseTextToRecord(text) {
     } else if (key.includes('損益区分')) {
       if (val.includes('最終')) record.profitType = '最終';
       else if (val.includes('経常')) record.profitType = '経常';
-    } else if (key.includes('損益') && !key.includes('区分')) {
+    } else if (key.includes('損益') && !key.includes('区分') && !isForecastKey) {
       record.profit = getNum(val);
-    } else if (key.includes('前年比') || key.includes('同期比') || key.includes('YoY')) {
+    } else if ((key.includes('前年比') || key.includes('同期比') || key.includes('YoY')) && !isForecastKey) {
       record.yoy = getNum(val);
-    } else if (key.includes('売上')) {
+    } else if (key.includes('売上') && !isForecastKey) {
       record.revenue = getNum(val);
-    } else if (key.includes('進捗')) {
+    } else if (key.includes('進捗') && !isForecastKey) {
       record.progress = getNum(val);
     } else if (key.includes('予想修正') || key.includes('修正')) {
       if (val.includes('up') || val.includes('上方')) record.revision = 'up';
