@@ -921,12 +921,10 @@ textarea.form-input {
   box-shadow: var(--shadow-xl);
   width: 100%;
   max-width: 480px;
-  margin-top: 40px;
+  margin-top: 60px;
   padding: var(--spacing-lg);
   transform: translateY(20px);
   transition: transform var(--transition-slow);
-  max-height: 85vh;
-  overflow-y: auto;
 }
 
 .detail-overlay.active .detail-panel {
@@ -1545,4 +1543,44 @@ input[type="number"] {
 .detail-history-table tbody tr:last-child td {
   border-bottom: none;
 }
+
+/* ========================================
+   Tooltip (CSS Custom Tooltip)
+   ======================================== */
+[data-tooltip] {
+  position: relative;
+  cursor: help;
+}
+
+[data-tooltip]::after {
+  content: attr(data-tooltip);
+  position: absolute;
+  bottom: 125%;
+  left: 50%;
+  transform: translateX(-50%) translateY(5px);
+  background: rgba(26, 29, 46, 0.95);
+  color: white;
+  padding: 8px 12px;
+  border-radius: var(--radius-sm);
+  font-size: 11px;
+  font-weight: 500;
+  white-space: pre-wrap; /* 改行を有効にする */
+  text-align: left;
+  line-height: 1.4;
+  box-shadow: var(--shadow-md);
+  opacity: 0;
+  visibility: hidden;
+  transition: all var(--transition-fast);
+  z-index: 999;
+  pointer-events: none;
+  width: max-content;
+  max-width: 280px;
+}
+
+[data-tooltip]:hover::after {
+  opacity: 1;
+  visibility: visible;
+  transform: translateX(-50%) translateY(0);
+}
+
 

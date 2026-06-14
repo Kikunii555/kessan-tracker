@@ -7,7 +7,7 @@
 // Constants
 // ========================================
 const DB_NAME = 'KessanTrackerDB';
-const DB_VERSION = 1;
+const DB_VERSION = 2; // バージョン2へ上げ、スキーマ再作成を行う
 const STORE_NAME = 'records';
 
 // ========================================
@@ -132,14 +132,28 @@ class DB {
       const request = indexedDB.open(DB_NAME, DB_VERSION);
       request.onupgradeneeded = (e) => {
         const db = e.target.result;
-        if (!db.objectStoreNames.contains(STORE_NAME)) {
-          const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
-          store.createIndex('code', 'code', { unique: false });
-          store.createIndex('date', 'date', { unique: false });
+        // スキーマの不整合（削除機能不全等）を防ぐため、古いストアが存在すれば一旦削除して作り直す
+        if (db.objectStoreNames.contains(STORE_NAME)) {
+          db.deleteObjectStore(STORE_NAME);
         }
+        const store = db.createObjectStore(STORE_NAME, { keyPath: 'id', autoIncrement: true });
+        store.createIndex('code', 'code', { unique: false });
+        store.createIndex('date', 'date', { unique: false });
       };
-      request.onsuccess = (e) => resolve(e.target.result);
+      request.onsuccess = (e) => {
+        const db = e.target.result;
+        // バージョン変更要求（他のタブでのアップデートなど）が発生したら接続を閉じる
+        db.onversionchange = () => {
+          db.close();
+          console.warn('Database version changed. Connection closed.');
+        };
+        resolve(db);
+      };
       request.onerror = (e) => reject(e.target.error);
+      request.onblocked = () => {
+        console.warn('Database upgrade is blocked by older connections. Try closing other tabs.');
+        // フェールセーフとして、リロードなどのトリガーを設定可能
+      };
     });
   }
 
@@ -745,13 +759,23 @@ function renderTable() {
     const rev = revisionLabels[r.revision] || { text: '—', class: '' };
 
     const quarterClass = r.quarter === '本決算' ? 'q-final' : '';
+    const quarterText = r.quarter === '本決算' ? '本' : (r.quarter || '—');
+
+    const divLabels = {
+      'up': '増配＋', 'hold': '据置→', 'down': '減配－', 'none': '無配', 'unknown': '非開示'
+    };
+    const divLabel = divLabels[r.dividendStatus] || '—';
+    let divClass = '';
+    if (r.dividendStatus === 'up') divClass = 'val-positive';
+    if (r.dividendStatus === 'down') divClass = 'val-negative';
+    const divText = `${divLabel}${r.dividendValue ? `<br><span style="font-size:10px; color:var(--color-text-secondary); font-weight:400">${r.dividendValue}円</span>` : ''}`;
 
     return `<tr data-id="${r.id}">
       <td>${r.rating ? `<span class="rating-badge ${ratingMap[r.rating] || ''}">${r.rating}</span>` : '<span style="color:var(--color-text-tertiary)">—</span>'}</td>
       <td class="col-code">${r.code}</td>
       <td class="col-name" title="${r.name}">${r.name}</td>
       <td class="col-date">${r.fiscalYear}.${String(r.fiscalMonth).padStart(2,'0')}期</td>
-      <td class="col-quarter"><span class="quarter-chip ${quarterClass}">${r.quarter || '—'}</span></td>
+      <td class="col-quarter"><span class="quarter-chip ${quarterClass}">${quarterText}</span></td>
       <td class="col-date">${formatDateDisplay(r.date)}</td>
       <td class="${yoyClass}" title="${trend.label}" style="text-align:center;font-size:1.1rem;font-weight:700;">${trend.arrow}</td>
       <td class="col-number ${profitClass}">${r.profit != null ? r.profit.toLocaleString() : '—'}<br><span class="profit-type-label">${r.profitType || ''}</span></td>
@@ -760,6 +784,7 @@ function renderTable() {
       <td class="col-number">${r.progress != null ? r.progress.toFixed(1) + '%' : '—'}</td>
       <td class="${pace.class}" style="font-size:var(--font-size-xs);font-weight:600;white-space:nowrap;">${pace.label}</td>
       <td><span class="revision-badge ${rev.class}">${rev.text}</span></td>
+      <td class="${divClass}" style="font-weight:600; text-align:center; white-space:nowrap;">${divText}</td>
       <td style="white-space:nowrap;font-size:var(--font-size-xs);font-weight:600;" class="${signal.class}" title="スコア: ${signal.score}">${signal.emoji} ${signal.label}</td>
       <td>${r.memo ? '<span class="memo-indicator"><span class="memo-dot"></span>有</span>' : ''}</td>
     </tr>`;
@@ -821,6 +846,7 @@ function getSortedRecords(records) {
       case 'trend':    va = a.yoy ?? -Infinity; vb = b.yoy ?? -Infinity; return (va - vb) * mult;
       case 'pace':     va = a._pace?.score ?? 0; vb = b._pace?.score ?? 0; return (va - vb) * mult;
       case 'revision': va = revisionOrder(a.revision); vb = revisionOrder(b.revision); return (va - vb) * mult;
+      case 'dividend': va = dividendOrder(a.dividendStatus); vb = dividendOrder(b.dividendStatus); return (va - vb) * mult;
       case 'signal':   va = a._signal?.score ?? 0; vb = b._signal?.score ?? 0; return (va - vb) * mult;
       default:         va = a.date || ''; vb = b.date || ''; break;
     }
@@ -843,6 +869,11 @@ function ratingOrder(r) {
 function revisionOrder(r) {
   const map = { 'up': 3, 'hold': 2, 'down': 1, 'none': 0 };
   return map[r] || 0;
+}
+
+function dividendOrder(d) {
+  const map = { 'up': 4, 'hold': 3, 'unknown': 2, 'none': 1, 'down': 0 };
+  return map[d] || 0;
 }
 
 function handleSort(key) {
@@ -928,7 +959,7 @@ function openDetail(record) {
 
     return `<tr>
       <td style="font-weight:600">${r.fiscalYear}.${String(r.fiscalMonth).padStart(2,'0')}</td>
-      <td><span class="quarter-chip ${r.quarter === '本決算' ? 'q-final' : ''}" style="font-size:10px; padding:1px 6px;">${r.quarter || '—'}</span></td>
+      <td><span class="quarter-chip ${r.quarter === '本決算' ? 'q-final' : ''}" style="font-size:10px; padding:1px 6px;">${r.quarter === '本決算' ? '本' : (r.quarter || '—')}</span></td>
       <td style="text-align:right">${r.revenue != null ? r.revenue.toLocaleString() : '—'}</td>
       <td style="text-align:right" class="${r.profit < 0 ? 'val-negative' : r.profit > 0 ? 'val-positive' : ''}">${r.profit != null ? r.profit.toLocaleString() : '—'}</td>
       <td style="text-align:right" class="${t.class}">${r.yoy != null ? (r.yoy >= 0 ? '+' : '') + r.yoy.toFixed(1) + '%' : '—'}</td>
@@ -1023,8 +1054,9 @@ function showConfirm(message, callback) {
   dom.confirmOverlay.classList.add('active');
 
   $('#btnConfirmOk').onclick = () => {
+    const cb = confirmCallback;
     closeConfirm();
-    if (confirmCallback) confirmCallback();
+    if (cb) cb();
   };
 }
 

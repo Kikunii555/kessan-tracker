@@ -73,20 +73,46 @@
       <table class="data-table" id="dataTable">
         <thead>
           <tr>
-            <th data-sort="rating" class="sorted" style="width:40px">評価 <span class="sort-icon">▼</span></th>
+            <th data-sort="rating" class="sorted" style="width:40px" data-tooltip="【自己評価基準】
+◎ : サプライズ・非常に良い
+○ : 好調・順調
+△ : 普通・横ばい
+× : 悪い・下方修正">評価 <span class="sort-icon">▼</span></th>
             <th data-sort="code" style="width:60px">コード <span class="sort-icon">▼</span></th>
             <th data-sort="name">銘柄名 <span class="sort-icon">▼</span></th>
             <th data-sort="period" style="width:80px">決算期 <span class="sort-icon">▼</span></th>
-            <th data-sort="quarter" style="width:50px">Q <span class="sort-icon">▼</span></th>
+            <th data-sort="quarter" style="width:50px" data-tooltip="四半期
+（「本」は本決算）">Q <span class="sort-icon">▼</span></th>
             <th data-sort="date" style="width:90px">発表日 <span class="sort-icon">▼</span></th>
-            <th data-sort="trend" style="width:40px">推移 <span class="sort-icon">▼</span></th>
+            <th data-sort="trend" style="width:40px" data-tooltip="【増益トレンド（対前年比）】
+↑↑ : 大幅増 (+50%以上)
+↑  : 増益 (+20%〜+50%)
+↗  : 微増 (+5%〜+20%)
+→  : 横ばい (-5%〜+5%)
+↘  : 微減 (-5%〜-20%)
+↓  : 減益 (-20%〜-50%)
+↓↓ : 大幅減 (-50%以下)">推移 <span class="sort-icon">▼</span></th>
             <th data-sort="profit" style="width:100px">損益(億) <span class="sort-icon">▼</span></th>
             <th data-sort="yoy" style="width:80px">前年比 <span class="sort-icon">▼</span></th>
             <th data-sort="revenue" style="width:90px">売上(億) <span class="sort-icon">▼</span></th>
             <th data-sort="progress" style="width:60px">進捗 <span class="sort-icon">▼</span></th>
-            <th data-sort="pace" style="width:70px">ペース <span class="sort-icon">▼</span></th>
-            <th data-sort="revision" style="width:70px">修正 <span class="sort-icon">▼</span></th>
-            <th data-sort="signal" style="width:80px">シグナル <span class="sort-icon">▼</span></th>
+            <th data-sort="pace" style="width:70px" data-tooltip="【進捗ペース】
+四半期ごとの基準値
+（1Q:25%, 2Q:50%, 3Q:75%, 本:100%）
+に対する進捗状況の乖離度">ペース <span class="sort-icon">▼</span></th>
+            <th data-sort="revision" style="width:70px" data-tooltip="会社発表による
+通期業績予想 of 修正">修正 <span class="sort-icon">▼</span></th>
+            <th data-sort="dividend" style="width:80px" data-tooltip="【配当方針・修正】
+増配 ＋ / 据置 → / 減配 －
+無配 / 非開示">配当 <span class="sort-icon">▼</span></th>
+            <th data-sort="signal" style="width:80px" data-tooltip="【総合シグナル】
+YoY、進捗率、会社予想修正、
+配当、自社株等から自動算出
+🟢 : 強気 (スコア+5以上)
+🔵 : やや強気 (スコア+2〜+4)
+⚪ : 中立 (スコア-1〜+1)
+🟠 : やや弱気 (スコア-4〜-2)
+🔴 : 弱気 (スコア-5以下)">シグナル <span class="sort-icon">▼</span></th>
             <th style="width:30px">📝</th>
           </tr>
         </thead>
