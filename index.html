@@ -1,0 +1,371 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="description" content="決算発表の記録・管理アプリ。注目銘柄の決算データを手軽に入力・一覧表示。">
+  <meta name="theme-color" content="#4f63d2">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <title>KessanTracker - 決算発表記録</title>
+  <link rel="manifest" href="manifest.json">
+  <link rel="icon" type="image/svg+xml" href="icons/icon.svg">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+  <!-- ===== Header ===== -->
+  <header class="app-header">
+    <div class="header-inner">
+      <div class="app-logo">
+        <div class="app-logo-icon">決</div>
+        <div>
+          <div class="app-title">KessanTracker</div>
+          <div class="app-subtitle">決算発表記録</div>
+        </div>
+      </div>
+      <div class="header-actions">
+        <button class="btn btn-ghost btn-sm" id="btnExport" title="エクスポート">📤 保存</button>
+        <button class="btn btn-ghost btn-sm" id="btnImport" title="インポート">📥 読込</button>
+      </div>
+    </div>
+  </header>
+
+  <!-- ===== Toolbar ===== -->
+  <div class="toolbar">
+    <div class="toolbar-left">
+      <div class="search-input-wrap">
+        <span class="search-icon">🔍</span>
+        <input type="text" class="search-input" id="searchInput" placeholder="銘柄検索...">
+      </div>
+      <select class="filter-select" id="filterQuarter">
+        <option value="">全四半期</option>
+        <option value="1Q">1Q</option>
+        <option value="2Q">2Q</option>
+        <option value="3Q">3Q</option>
+        <option value="本決算">本決算</option>
+      </select>
+      <select class="filter-select" id="filterRating">
+        <option value="">全評価</option>
+        <option value="◎">◎</option>
+        <option value="○">○</option>
+        <option value="△">△</option>
+        <option value="×">×</option>
+      </select>
+      <select class="filter-select" id="filterSignal">
+        <option value="">全シグナル</option>
+        <option value="strong-buy">🟢 強気</option>
+        <option value="buy">🔵 やや強気</option>
+        <option value="neutral">⚪ 中立</option>
+        <option value="sell">🟠 やや弱気</option>
+        <option value="strong-sell">🔴 弱気</option>
+      </select>
+    </div>
+    <div class="toolbar-right">
+      <span class="record-count" id="recordCount">0件</span>
+    </div>
+  </div>
+
+  <!-- ===== Data Table ===== -->
+  <div class="table-container">
+    <div class="data-table-wrapper">
+      <table class="data-table" id="dataTable">
+        <thead>
+          <tr>
+            <th data-sort="rating" class="sorted" style="width:40px">評価 <span class="sort-icon">▼</span></th>
+            <th data-sort="code" style="width:60px">コード <span class="sort-icon">▼</span></th>
+            <th data-sort="name">銘柄名 <span class="sort-icon">▼</span></th>
+            <th data-sort="period" style="width:80px">決算期 <span class="sort-icon">▼</span></th>
+            <th data-sort="quarter" style="width:50px">Q <span class="sort-icon">▼</span></th>
+            <th data-sort="date" style="width:90px">発表日 <span class="sort-icon">▼</span></th>
+            <th data-sort="trend" style="width:40px">推移 <span class="sort-icon">▼</span></th>
+            <th data-sort="profit" style="width:100px">損益(億) <span class="sort-icon">▼</span></th>
+            <th data-sort="yoy" style="width:80px">前年比 <span class="sort-icon">▼</span></th>
+            <th data-sort="revenue" style="width:90px">売上(億) <span class="sort-icon">▼</span></th>
+            <th data-sort="progress" style="width:60px">進捗 <span class="sort-icon">▼</span></th>
+            <th data-sort="pace" style="width:70px">ペース <span class="sort-icon">▼</span></th>
+            <th data-sort="revision" style="width:70px">修正 <span class="sort-icon">▼</span></th>
+            <th data-sort="signal" style="width:80px">シグナル <span class="sort-icon">▼</span></th>
+            <th style="width:30px">📝</th>
+          </tr>
+        </thead>
+        <tbody id="tableBody">
+        </tbody>
+      </table>
+
+      <!-- Empty state -->
+      <div class="empty-state" id="emptyState">
+        <div class="empty-icon">📊</div>
+        <div class="empty-title">決算データがありません</div>
+        <div class="empty-desc">右下の「+」ボタンから、注目銘柄の決算発表を記録しましょう</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== FAB ===== -->
+  <button class="fab" id="fabAdd" title="新規追加">＋</button>
+
+  <!-- ===== Input Modal ===== -->
+  <div class="modal-overlay" id="inputModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="modalTitle">決算データ入力</span>
+        <button class="modal-close" id="modalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <form id="kessanForm" autocomplete="off">
+          <!-- hidden id for edit mode -->
+          <input type="hidden" id="editId" value="">
+
+          <!-- AI Bulk Input -->
+          <details class="ai-input-details">
+            <summary class="ai-input-summary">🤖 AI一括入力（Gemini等を貼り付け）</summary>
+            <div class="ai-input-body">
+              <div class="ai-prompt-wrap">
+                <span class="ai-prompt-desc">株探の記事とこのプロンプトをAIに送ってください：</span>
+                <button type="button" class="btn btn-ghost btn-sm" id="btnCopyPrompt">📋 プロンプトコピー</button>
+              </div>
+              <textarea class="form-input ai-textarea" id="aiInputText" rows="4" placeholder="ここにAIの出力テキスト（JSONやキーバリュー）を貼り付け..."></textarea>
+              <button type="button" class="btn btn-primary btn-sm" id="btnApplyAiInput" style="margin-top:8px; width:100%;">⚡ フォームに反映する</button>
+            </div>
+          </details>
+
+          <!-- 1. Stock Code -->
+          <div class="form-group">
+            <label class="form-label">銘柄コード</label>
+            <div class="stock-input-wrap">
+              <input type="text" class="form-input" id="inputCode" placeholder="例: 7203" maxlength="4" inputmode="numeric" pattern="[0-9]*">
+              <div class="suggestion-list" id="suggestionList"></div>
+            </div>
+            <div class="stock-name-display empty" id="stockNameDisplay">コードを入力してください</div>
+          </div>
+
+          <!-- 2. Fiscal Period + Quarter -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label class="form-label">決算期</label>
+              <div class="form-row form-row-2" style="gap:8px">
+                <input type="number" class="form-input" id="inputFiscalYear" placeholder="2025" min="2000" max="2099" inputmode="numeric">
+                <select class="form-input" id="inputFiscalMonth">
+                  <option value="3">3月期</option>
+                  <option value="6">6月期</option>
+                  <option value="9">9月期</option>
+                  <option value="12">12月期</option>
+                  <option value="2">2月期</option>
+                  <option value="1">1月期</option>
+                  <option value="5">5月期</option>
+                  <option value="8">8月期</option>
+                  <option value="11">11月期</option>
+                </select>
+              </div>
+            </div>
+            <div class="form-group">
+              <label class="form-label">発表日</label>
+              <input type="date" class="form-input" id="inputDate">
+            </div>
+          </div>
+
+          <!-- 3. Quarter -->
+          <div class="form-group">
+            <label class="form-label">該当四半期</label>
+            <div class="quarter-group" id="quarterGroup">
+              <button type="button" class="quarter-btn" data-value="1Q">1Q</button>
+              <button type="button" class="quarter-btn" data-value="2Q">2Q</button>
+              <button type="button" class="quarter-btn" data-value="3Q">3Q</button>
+              <button type="button" class="quarter-btn active" data-value="本決算">本決算</button>
+            </div>
+          </div>
+
+          <!-- 4. Rating -->
+          <div class="form-group">
+            <label class="form-label">決算評価</label>
+            <div class="rating-group" id="ratingGroup">
+              <button type="button" class="rating-btn" data-value="◎">◎</button>
+              <button type="button" class="rating-btn" data-value="○">○</button>
+              <button type="button" class="rating-btn" data-value="△">△</button>
+              <button type="button" class="rating-btn" data-value="×">×</button>
+            </div>
+          </div>
+
+          <!-- 5. Profit Type + Profit + YoY -->
+          <div class="form-group">
+            <label class="form-label">損益区分</label>
+            <div class="toggle-group" id="profitTypeGroup">
+              <button type="button" class="toggle-option active" data-value="経常">経常損益</button>
+              <button type="button" class="toggle-option" data-value="最終">最終損益</button>
+            </div>
+          </div>
+
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label class="form-label">損益（億円）</label>
+              <input type="number" class="form-input" id="inputProfit" placeholder="例: 150" step="0.1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">前期同期比（%）</label>
+              <input type="number" class="form-input" id="inputYoY" placeholder="例: 25.3" step="0.1">
+            </div>
+          </div>
+
+          <!-- 6. Revenue -->
+          <div class="form-group">
+            <label class="form-label">売上高（億円）</label>
+            <input type="number" class="form-input" id="inputRevenue" placeholder="例: 3500" step="0.1">
+          </div>
+
+          <!-- 7. Progress -->
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label class="form-label">進捗率（%）</label>
+              <input type="number" class="form-input" id="inputProgress" placeholder="例: 78.5" step="0.1" min="0" max="999">
+            </div>
+            <div class="form-group">
+              <label class="form-label">通期予想修正</label>
+              <div class="revision-group" id="revisionGroup">
+                <button type="button" class="revision-btn" data-value="up">↑上方</button>
+                <button type="button" class="revision-btn active" data-value="hold">→据置</button>
+                <button type="button" class="revision-btn" data-value="down">↓下方</button>
+                <button type="button" class="revision-btn" data-value="none">未発表</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 7.5. Dividend & Buyback -->
+          <div class="form-group">
+            <label class="form-label">配当方針・修正</label>
+            <div class="dividend-status-group" id="dividendStatusGroup">
+              <button type="button" class="div-status-btn" data-value="up">＋増配</button>
+              <button type="button" class="div-status-btn active" data-value="hold">→据置</button>
+              <button type="button" class="div-status-btn" data-value="down">－減配</button>
+              <button type="button" class="div-status-btn" data-value="none">無配</button>
+              <button type="button" class="div-status-btn" data-value="unknown">非開示</button>
+            </div>
+          </div>
+
+          <div class="form-row form-row-2">
+            <div class="form-group">
+              <label class="form-label">年間配当金（円）</label>
+              <input type="number" class="form-input" id="inputDividendValue" placeholder="例: 150" step="0.1">
+            </div>
+            <div class="form-group">
+              <label class="form-label">自社株買い発表</label>
+              <div class="buyback-group" id="buybackGroup">
+                <button type="button" class="buyback-btn" data-value="yes">発表有</button>
+                <button type="button" class="buyback-btn active" data-value="no">発表無</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- 8. Memo -->
+          <div class="form-group">
+            <label class="form-label">メモ</label>
+            <textarea class="form-input" id="inputMemo" rows="2" placeholder="決算の所感、注目ポイントなど..."></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnCancelForm">キャンセル</button>
+        <button class="btn btn-primary" id="btnSaveForm">💾 保存</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Detail Overlay ===== -->
+  <div class="detail-overlay" id="detailOverlay">
+    <div class="detail-panel" id="detailPanel">
+      <div class="detail-header">
+        <div class="detail-stock-info">
+          <span class="detail-code" id="detailCode"></span>
+          <span class="detail-name" id="detailName"></span>
+        </div>
+        <button class="modal-close" id="detailClose">✕</button>
+      </div>
+      <div class="detail-grid" id="detailGrid"></div>
+      <div id="detailMemoSection" style="display:none">
+        <div class="detail-memo-label">メモ</div>
+        <div class="detail-memo" id="detailMemo"></div>
+      </div>
+      
+      <!-- Detail History -->
+      <div class="detail-history-section">
+        <div class="detail-history-label">決算発表の履歴推移</div>
+        <div class="detail-history-table-wrap">
+          <table class="detail-history-table">
+            <thead>
+              <tr>
+                <th>決算期</th>
+                <th>Q</th>
+                <th>売上(億)</th>
+                <th>利益(億)</th>
+                <th>前年比</th>
+                <th>進捗</th>
+                <th>配当</th>
+                <th>自社株</th>
+                <th>シグナル</th>
+              </tr>
+            </thead>
+            <tbody id="detailHistoryBody">
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="detail-actions">
+        <button class="btn btn-ghost btn-sm" id="btnDetailEdit">✏️ 編集</button>
+        <button class="btn btn-danger btn-sm" id="btnDetailDelete">🗑️ 削除</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Confirm Dialog ===== -->
+  <div class="confirm-overlay" id="confirmOverlay">
+    <div class="confirm-dialog">
+      <div class="confirm-message" id="confirmMessage"></div>
+      <div class="confirm-actions">
+        <button class="btn btn-ghost" id="btnConfirmCancel">キャンセル</button>
+        <button class="btn btn-danger" id="btnConfirmOk">削除する</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Export/Import Modal ===== -->
+  <div class="modal-overlay" id="exportModal">
+    <div class="modal">
+      <div class="modal-header">
+        <span class="modal-title" id="exportModalTitle">データ管理</span>
+        <button class="modal-close" id="exportModalClose">✕</button>
+      </div>
+      <div class="modal-body">
+        <div id="exportContent">
+          <p style="font-size:var(--font-size-sm); color:var(--color-text-secondary); margin-bottom:var(--spacing-md);">
+            データをJSON形式でエクスポートします。別の端末へのデータ移行やバックアップに使用してください。
+          </p>
+          <textarea class="export-textarea" id="exportTextarea" readonly></textarea>
+        </div>
+        <div id="importContent" style="display:none">
+          <p style="font-size:var(--font-size-sm); color:var(--color-text-secondary); margin-bottom:var(--spacing-md);">
+            エクスポートしたJSONデータを貼り付けてインポートします。<br>
+            <strong style="color:var(--color-negative);">※ 既存データは全て上書きされます</strong>
+          </p>
+          <textarea class="export-textarea" id="importTextarea" placeholder="ここにJSONデータを貼り付け..."></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-ghost" id="btnExportClose">閉じる</button>
+        <button class="btn btn-primary" id="btnCopyExport">📋 コピー</button>
+        <button class="btn btn-primary" id="btnDoImport" style="display:none">📥 インポート実行</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- ===== Toast ===== -->
+  <div class="toast" id="toast"></div>
+
+  <!-- ===== Hidden file input ===== -->
+  <input type="file" class="hidden-input" id="fileInput" accept=".json">
+
+  <script src="stocks.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
